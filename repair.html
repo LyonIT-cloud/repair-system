@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鼎顓電子資訊管理系統 - 分頁優化版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f1f5f9; }
+        .status-badge { padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: bold; }
+        #imageModal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: zoom-out; }
+        #modalImg { margin: auto; display: block; max-width: 90%; max-height: 90%; position: relative; top: 50%; transform: translateY(-50%); border-radius: 8px; }
+        .img-preview-cell { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; cursor: zoom-in; margin-top: 8px; border: 1px solid #e2e8f0; }
+        
+        .editable-content { 
+            padding: 6px; border: 1px solid transparent; border-radius: 6px; 
+            transition: all 0.2s; cursor: text; min-height: 2em;
+        }
+        .editable-content:hover { background-color: rgba(248, 250, 252, 0.8); border-color: #cbd5e1; }
+        .editable-content:focus { 
+            background-color: white; border-color: #3b82f6; outline: none; 
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
+        }
+        [contenteditable]:empty:before { content: attr(placeholder); color: #cbd5e1; cursor: text; }
+    </style>
+</head>
+<body class="min-h-screen py-6 px-4">
+
+    <div id="imageModal" onclick="this.style.display='none'">
+        <img id="modalImg" src="">
+        <p class="text-white text-center mt-4 text-sm opacity-70">點擊任意處返回</p>
+    </div>
+
+    <div class="max-w-6xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+        <div class="bg-slate-800 p-6 flex justify-between items-center text-white">
+            <div>
+                <h2 class="text-2xl font-bold tracking-wide">鼎顓電子資訊管理系統</h2>
+                <p class="text-slate-400 text-sm">內部報修與處理進度系統</p>
+            </div>
+            <button id="toggleModeBtn" class="bg-blue-600 hover:bg-blue-700 px-6 py-2.5 rounded-xl font-bold transition shadow-lg active:scale-95">
+                切換報修清單
+            </button>
+        </div>
+
+        <div class="p-8">
+            <div id="formSection" class="block">
+                <form id="orderForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="col-span-1">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">姓名</label>
+                        <input type="text" id="userName" required placeholder="請輸入姓名" class="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">所屬部門</label>
+                        <select id="userDept" required class="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none bg-white">
+                            <option value="" disabled selected>請選擇部門</option>
+                            <option value="管理">管理部</option><option value="製造">製造部</option>
+                            <option value="資材">資材部</option><option value="工程">工程部</option>
+                            <option value="會計">會計部</option><option value="倉庫">倉庫部</option>
+                            <option value="DIP">DIP部</option><option value="業務">業務部</option>
+                            <option value="品保">品保部</option><option value="電子倉">電子倉</option>
+                            <option value="SMT">SMT</option><option value="研發">研發部</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">問題分類</label>
+                        <select id="issueCategory" required class="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none bg-slate-50 text-blue-700 font-bold">
+                            <option value="電腦硬體">電腦硬體</option><option value="產線問題">產線問題</option>
+                            <option value="ERP">ERP/帳號建立</option><option value="MES">MES/帳號建立</option>
+                            <option value="NHR">NHR/帳號建立</option><option value="網路架設">網路架設</option>
+                            <option value="軟體/系統">軟體/系統</option><option value="郵件問題">郵件收發/刪除/建立</option>
+                            <option value="網路/Wi-Fi">網路/Wi-Fi</option><option value="周邊耗材">周邊耗材/設備申請</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">上傳照片</label>
+                        <input type="file" id="imageInput" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">內容描述</label>
+                        <textarea id="content" required placeholder="請詳細描述問題狀況..." class="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none transition" rows="4"></textarea>
+                    </div>
+                    <button type="submit" id="submitBtn" class="col-span-2 bg-blue-600 text-white font-extrabold py-4 rounded-xl hover:bg-blue-700 shadow-xl transition active:scale-95 text-lg">
+                        確認送出報修單
+                    </button>
+                </form>
+            </div>
+
+            <div id="listSection" class="hidden">
+                <div class="grid grid-cols-3 gap-4 mb-6 text-center">
+                    <div class="bg-slate-50 border p-4 rounded-2xl"><p class="text-slate-500 text-xs font-bold">總案件</p><p id="totalCount" class="text-2xl font-black">0</p></div>
+                    <div class="bg-emerald-50 border p-4 rounded-2xl"><p class="text-emerald-600 text-xs font-bold">已完成</p><p id="closedCount" class="text-2xl font-black">0</p></div>
+                    <div class="bg-blue-50 border p-4 rounded-2xl"><p class="text-blue-600 text-xs font-bold">完成率</p><p id="completionRate" class="text-2xl font-black">0%</p></div>
+                </div>
+
+                <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                    <div class="flex gap-2 bg-slate-100 p-1 rounded-xl w-fit">
+                        <button id="showActiveBtn" class="px-6 py-2 rounded-lg font-bold transition text-sm bg-white shadow text-blue-600">受理中</button>
+                        <button id="showClosedBtn" class="px-6 py-2 rounded-lg font-bold transition text-sm text-slate-500 hover:bg-white/50">已結案</button>
+                    </div>
+                    
+                    <div id="paginationControls" class="hidden flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
+                        <button id="prevPage" class="text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <span id="pageInfo" class="text-sm font-bold text-slate-600">第 1 / 1 頁</span>
+                        <button id="nextPage" class="text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto rounded-xl border border-slate-100">
+                    <table class="w-full text-left border-collapse min-w-[1000px]">
+                        <thead>
+                            <tr class="bg-slate-800 text-white text-[11px] uppercase">
+                                <th class="p-4 w-40">人員/部門/日期</th>
+                                <th class="p-4">問題描述 (可編輯)</th>
+                                <th class="p-4">處理紀錄 (管理者填寫)</th>
+                                <th class="p-4 w-28">狀態</th>
+                                <th class="p-4 w-32 text-center">管理權限</th>
+                            </tr>
+                        </thead>
+                        <tbody id="repairTableBody" class="text-slate-700 divide-y divide-slate-100 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="statusContainer" class="hidden mt-8 p-4 rounded-2xl text-center font-bold border-2 transition-all"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDB2SBLtMPUSmULpSTAMIJhXuLeSrrt4vE",
+            authDomain: "bard-frontend-8d524.firebaseapp.com",
+            projectId: "bard-frontend-8d524",
+            storageBucket: "bard-frontend-8d524.firebasestorage.app",
+            messagingSenderId: "656405111977",
+            appId: "1:656405111977:web:675c22b914c1b1073675b8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const ADMIN_PWD = "Mju76yhn6776@";
+
+        signInAnonymously(auth).catch(() => {});
+
+        // --- 狀態控制變數 ---
+        let currentFilter = "受理中"; 
+        let currentPage = 1;
+        const itemsPerPage = 10;
+        let allItems = [];
+
+        async function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width, height = img.height;
+                        if (width > height) { if (width > 800) { height *= 800 / width; width = 800; } }
+                        else { if (height > 800) { width *= 800 / height; height = 800; } }
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                };
+            });
+        }
+
+        window.zoomImage = (src) => {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImg');
+            modal.style.display = "block"; modalImg.src = src;
+        };
+
+        window.autoSaveField = async (id, fieldName, newValue) => {
+            try {
+                await updateDoc(doc(db, "formEntries", id), { [fieldName]: newValue });
+            } catch (e) { console.error("Save Error"); }
+        };
+
+        function showStatus(message, isError = false) {
+            const statusBox = document.getElementById('statusContainer');
+            statusBox.innerText = message;
+            statusBox.classList.remove('hidden');
+            statusBox.className = `mt-8 p-4 rounded-2xl text-center font-bold border-2 ${isError ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'} block`;
+            setTimeout(() => { statusBox.classList.add('hidden'); }, 4000);
+        }
+
+        // --- UI 控制與事件 ---
+        const btn = document.getElementById('toggleModeBtn');
+        const formSec = document.getElementById('formSection');
+        const listSec = document.getElementById('listSection');
+        const showActiveBtn = document.getElementById('showActiveBtn');
+        const showClosedBtn = document.getElementById('showClosedBtn');
+        const prevBtn = document.getElementById('prevPage');
+        const nextBtn = document.getElementById('nextPage');
+
+        btn.addEventListener('click', () => {
+            if (formSec.classList.contains('hidden')) {
+                formSec.classList.replace('hidden', 'block');
+                listSec.classList.add('hidden');
+                btn.innerText = "切換報修清單";
+            } else {
+                formSec.classList.replace('block', 'hidden');
+                listSec.classList.remove('hidden');
+                btn.innerText = "返回線上填單";
+                fetchAndLoad();
+            }
+        });
+
+        showActiveBtn.addEventListener('click', () => { currentFilter = "受理中"; currentPage = 1; updateTabUI(); renderTable(); });
+        showClosedBtn.addEventListener('click', () => { currentFilter = "已結案"; currentPage = 1; updateTabUI(); renderTable(); });
+        prevBtn.addEventListener('click', () => { if(currentPage > 1) { currentPage--; renderTable(); } });
+        nextBtn.addEventListener('click', () => { const maxPage = Math.ceil(getFilteredData().length / itemsPerPage); if(currentPage < maxPage) { currentPage++; renderTable(); } });
+
+        function updateTabUI() {
+            const isActive = currentFilter === "受理中";
+            showActiveBtn.className = `px-6 py-2 rounded-lg font-bold transition text-sm ${isActive ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:bg-white/50'}`;
+            showClosedBtn.className = `px-6 py-2 rounded-lg font-bold transition text-sm ${!isActive ? 'bg-white shadow text-emerald-600' : 'text-slate-500 hover:bg-white/50'}`;
+            document.getElementById('paginationControls').style.display = isActive ? 'none' : 'flex';
+        }
+
+        async function fetchAndLoad() {
+            const tbody = document.getElementById('repairTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">載入資料中...</td></tr>';
+            try {
+                const q = query(collection(db, "formEntries"), orderBy("createdAt", "desc"));
+                const snap = await getDocs(q);
+                allItems = [];
+                let total = 0, closed = 0;
+                snap.forEach(d => {
+                    const item = { id: d.id, ...d.data() };
+                    allItems.push(item);
+                    total++;
+                    if (item.status === "已結案") closed++;
+                });
+                document.getElementById('totalCount').innerText = total;
+                document.getElementById('closedCount').innerText = closed;
+                document.getElementById('completionRate').innerText = (total === 0 ? 0 : Math.round((closed/total)*100)) + "%";
+                renderTable();
+            } catch (e) { showStatus("資料讀取失敗", true); }
+        }
+
+        function getFilteredData() {
+            return allItems.filter(item => currentFilter === "受理中" ? item.status !== "已結案" : item.status === "已結案");
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('repairTableBody');
+            const data = getFilteredData();
+            
+            // 如果是結案，執行分頁切片；如果是受理中，顯示全部
+            let displayData = data;
+            if (currentFilter === "已結案") {
+                const start = (currentPage - 1) * itemsPerPage;
+                displayData = data.slice(start, start + itemsPerPage);
+                
+                const maxPage = Math.ceil(data.length / itemsPerPage) || 1;
+                document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${maxPage} 頁`;
+                prevBtn.disabled = currentPage === 1;
+                nextBtn.disabled = currentPage === maxPage;
+            }
+
+            tbody.innerHTML = displayData.length === 0 ? `<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">目前沒有${currentFilter}的項目</td></tr>` : '';
+
+            displayData.forEach(item => {
+                const isDone = item.status === "已結案";
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition";
+                tr.innerHTML = `
+                    <td class="p-4 align-top">
+                        <div class="font-bold text-slate-800">${item.name}</div>
+                        <div class="text-blue-600 font-bold text-xs mt-1">${item.dept}部</div>
+                        <div class="text-slate-400 text-[10px] mt-2">${item.createdAt?.toDate().toLocaleString() || ""}</div>
+                    </td>
+                    <td class="p-4 align-top">
+                        <div class="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded inline-block mb-2 border border-blue-100">${item.category}</div>
+                        <div contenteditable="true" class="editable-content text-slate-600 leading-relaxed break-words" onblur="window.autoSaveField('${item.id}', 'content', this.innerText)">${item.content}</div>
+                        ${item.imageData ? `<img src="${item.imageData}" onclick="zoomImage('${item.imageData}')" class="img-preview-cell shadow-sm">` : ''}
+                    </td>
+                    <td class="p-4 align-top">
+                        <div contenteditable="true" class="editable-content text-emerald-800 bg-emerald-50/40 border-emerald-100 min-h-[60px]" placeholder="點擊輸入處理結果..." onblur="window.autoSaveField('${item.id}', 'handleRecord', this.innerText)">${item.handleRecord || ''}</div>
+                    </td>
+                    <td class="p-4 align-top">
+                        <span class="status-badge ${isDone ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}">${item.status || '受理中'}</span>
+                    </td>
+                    <td class="p-4 text-center align-top flex flex-col gap-2">
+                        ${isDone ? '<span class="text-emerald-500 text-xs font-bold py-2">✓ 已完工</span>' : `<button onclick="window.manageAction('${item.id}', 'close')" class="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs hover:bg-black transition shadow">結案</button>`}
+                        <button onclick="window.manageAction('${item.id}', 'delete')" class="bg-red-50 text-red-500 px-3 py-2 rounded-lg text-xs hover:bg-red-500 hover:text-white transition">刪除</button>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.manageAction = async (id, type) => {
+            const inputPwd = prompt(`請輸入管理員密碼：`);
+            if (inputPwd !== ADMIN_PWD) { if(inputPwd !== null) alert("密碼錯誤"); return; }
+            try {
+                if (type === 'close') await updateDoc(doc(db, "formEntries", id), { status: "已結案" });
+                else if (type === 'delete') if (confirm("確定要刪除這筆報修單嗎？")) await deleteDoc(doc(db, "formEntries", id));
+                fetchAndLoad();
+            } catch (e) { showStatus("操作失敗", true); }
+        };
+
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btnSubmit = document.getElementById('submitBtn');
+            const fileInput = document.getElementById('imageInput');
+            btnSubmit.disabled = true; btnSubmit.innerText = "傳送中...";
+            try {
+                let base64Image = "";
+                if (fileInput.files && fileInput.files[0]) base64Image = await compressImage(fileInput.files[0]);
+                await addDoc(collection(db, "formEntries"), {
+                    name: document.getElementById('userName').value,
+                    dept: document.getElementById('userDept').value,
+                    category: document.getElementById('issueCategory').value,
+                    content: document.getElementById('content').value,
+                    handleRecord: "", imageData: base64Image, status: "受理中", createdAt: serverTimestamp()
+                });
+                showStatus("✅ 報修單已成功送出！");
+                document.getElementById('orderForm').reset();
+            } catch (error) { showStatus("❌ 傳送失敗", true); }
+            finally { btnSubmit.disabled = false; btnSubmit.innerText = "確認送出報修單"; }
+        });
+    </script>
+</body>
+</html>
