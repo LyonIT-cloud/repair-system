@@ -133,7 +133,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -152,13 +152,11 @@
 
         signInAnonymously(auth).catch(() => {});
 
-        // --- 狀態控制與分頁變數 ---
+        // --- 狀態控制變數 ---
         let currentFilter = "受理中"; 
         let currentPage = 1;
         const itemsPerPage = 10;
-        let lastVisible = {};
-        let firstVisible = {};
-        let pageDocMap = {}; // 記錄每一頁的起始 doc 參考，實現穩定翻頁
+        let allItems = [];
 
         async function compressImage(file) {
             return new Promise((resolve) => {
@@ -218,41 +216,14 @@
                 formSec.classList.replace('block', 'hidden');
                 listSec.classList.remove('hidden');
                 btn.innerText = "返回線上填單";
-                initLoad();
+                fetchAndLoad();
             }
         });
 
-        showActiveBtn.addEventListener('click', () => { 
-            if (currentFilter !== "受理中") {
-                currentFilter = "受理中"; 
-                currentPage = 1; 
-                pageDocMap = {};
-                updateTabUI(); 
-                fetchAndLoad(); 
-            }
-        });
-
-        showClosedBtn.addEventListener('click', () => { 
-            if (currentFilter !== "已結案") {
-                currentFilter = "已結案"; 
-                currentPage = 1; 
-                pageDocMap = {};
-                updateTabUI(); 
-                fetchAndLoad(); 
-            }
-        });
-
-        prevBtn.addEventListener('click', () => { 
-            if(currentPage > 1) { 
-                currentPage--; 
-                fetchAndLoad('prev'); 
-            } 
-        });
-
-        nextBtn.addEventListener('click', () => { 
-            currentPage++; 
-            fetchAndLoad('next'); 
-        });
+        showActiveBtn.addEventListener('click', () => { currentFilter = "受理中"; currentPage = 1; updateTabUI(); renderTable(); });
+        showClosedBtn.addEventListener('click', () => { currentFilter = "已結案"; currentPage = 1; updateTabUI(); renderTable(); });
+        prevBtn.addEventListener('click', () => { if(currentPage > 1) { currentPage--; renderTable(); } });
+        nextBtn.addEventListener('click', () => { const maxPage = Math.ceil(getFilteredData().length / itemsPerPage); if(currentPage < maxPage) { currentPage++; renderTable(); } });
 
         function updateTabUI() {
             const isActive = currentFilter === "受理中";
@@ -260,78 +231,50 @@
             showClosedBtn.className = `px-6 py-2 rounded-lg font-bold transition text-sm ${!isActive ? 'bg-white shadow text-emerald-600' : 'text-slate-500 hover:bg-white/50'}`;
         }
 
-        async function initLoad() {
-            currentPage = 1;
-            pageDocMap = {};
-            await fetchCounts();
-            await fetchAndLoad();
-        }
-
-        async function fetchCounts() {
-            try {
-                const totalSnap = await getCountFromServer(collection(db, "formEntries"));
-                const total = totalSnap.data().count;
-
-                const closedQuery = query(collection(db, "formEntries"), where("status", "==", "已結案"));
-                const closedSnap = await getCountFromServer(closedQuery);
-                const closed = closedSnap.data().count;
-
-                document.getElementById('totalCount').innerText = total;
-                document.getElementById('closedCount').innerText = closed;
-                document.getElementById('completionRate').innerText = (total === 0 ? 0 : Math.round((closed/total)*100)) + "%";
-            } catch (e) {
-                console.error("Count Error", e);
-            }
-        }
-
-        async function fetchAndLoad(direction = 'next') {
+        async function fetchAndLoad() {
             const tbody = document.getElementById('repairTableBody');
             tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">載入資料中...</td></tr>';
             try {
-                // 建立基礎查詢：根據狀態過濾、依建立時間倒序，每次限制讀取一頁的數量
-                let q;
-                const colRef = collection(db, "formEntries");
-                
-                // 註：若要用 status 做條件查詢，需確保 Firestore 有建立相對應的 Index
-                if (currentFilter === "受理中") {
-                    q = query(colRef, where("status", "!=", "已結案"), orderBy("status"), orderBy("createdAt", "desc"), limit(itemsPerPage));
-                } else {
-                    q = query(colRef, where("status", "==", "已結案"), orderBy("createdAt", "desc"), limit(itemsPerPage));
-                }
-
-                if (currentPage > 1 && pageDocMap[currentPage]) {
-                    q = query(colRef, ...(currentFilter === "受理中" ? [where("status", "!=", "已結案"), orderBy("status"), orderBy("createdAt", "desc")] : [where("status", "==", "已結案"), orderBy("createdAt", "desc")]), startAfter(pageDocMap[currentPage]), limit(itemsPerPage));
-                }
-
+                // 單純抓取全部並用 createdAt 排序，避免複雜索引報錯
+                const q = query(collection(db, "formEntries"), orderBy("createdAt", "desc"));
                 const snap = await getDocs(q);
-                let currentItems = [];
+                allItems = [];
+                let total = 0, closed = 0;
                 snap.forEach(d => {
-                    currentItems.push({ id: d.id, ...d.data() });
+                    const item = { id: d.id, ...d.data() };
+                    allItems.push(item);
+                    total++;
+                    if (item.status === "已結案") closed++;
                 });
-
-                if (currentItems.length > 0) {
-                    // 記錄該頁最後一個 doc 作為下一頁的起點
-                    pageDocMap[currentPage + 1] = snap.docs[snap.docs.length - 1];
-                }
-
-                renderTable(currentItems);
-
-                // 更新分頁按鈕狀態
-                document.getElementById('pageInfo').innerText = `第 ${currentPage} 頁`;
-                prevBtn.disabled = currentPage === 1;
-                nextBtn.disabled = currentItems.length < itemsPerPage;
-
+                document.getElementById('totalCount').innerText = total;
+                document.getElementById('closedCount').innerText = closed;
+                document.getElementById('completionRate').innerText = (total === 0 ? 0 : Math.round((closed/total)*100)) + "%";
+                renderTable();
             } catch (e) { 
                 console.error(e);
-                showStatus("資料讀取失敗，請確認是否建立 Firestore 索引", true); 
+                showStatus("資料讀取失敗", true); 
             }
         }
 
-        function renderTable(data) {
-            const tbody = document.getElementById('repairTableBody');
-            tbody.innerHTML = data.length === 0 ? `<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">目前沒有${currentFilter}的項目</td></tr>` : '';
+        function getFilteredData() {
+            return allItems.filter(item => currentFilter === "受理中" ? item.status !== "已結案" : item.status === "已結案");
+        }
 
-            data.forEach(item => {
+        function renderTable() {
+            const tbody = document.getElementById('repairTableBody');
+            const data = getFilteredData();
+            
+            const start = (currentPage - 1) * itemsPerPage;
+            let displayData = data.slice(start, start + itemsPerPage);
+            
+            const maxPage = Math.ceil(data.length / itemsPerPage) || 1;
+            document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${maxPage} 頁`;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage >= maxPage;
+
+            tbody.innerHTML = displayData.length === 0 ? `<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">目前沒有${currentFilter}的項目</td></tr>` : '';
+
+            displayData.forEach(item => {
                 const isDone = item.status === "已結案";
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50/80 transition";
@@ -366,7 +309,7 @@
             try {
                 if (type === 'close') await updateDoc(doc(db, "formEntries", id), { status: "已結案" });
                 else if (type === 'delete') if (confirm("確定要刪除這筆報修單嗎？")) await deleteDoc(doc(db, "formEntries", id));
-                initLoad();
+                fetchAndLoad();
             } catch (e) { showStatus("操作失敗", true); }
         };
 
