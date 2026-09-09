@@ -341,7 +341,7 @@
                 if (fileInput.files && fileInput.files[0]) base64Image = await compressImage(fileInput.files[0]);
                 await addDoc(collection(db, "formEntries"), {
                     name: document.getElementById('userName').value,
-                    dept: document.getElementById('userDept'],
+                    dept: document.getElementById('userDept').value,
                     category: document.getElementById('issueCategory').value,
                     content: document.getElementById('content').value,
                     handleRecord: "", imageData: base64Image, status: "受理中", createdAt: serverTimestamp()
