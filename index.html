@@ -133,7 +133,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -188,6 +188,9 @@
         window.autoSaveField = async (id, fieldName, newValue) => {
             try {
                 await updateDoc(doc(db, "formEntries", id), { [fieldName]: newValue });
+                // 同步更新前端暫存資料，避免重新整理
+                const target = allItems.find(i => i.id === id);
+                if (target) target[fieldName] = newValue;
             } catch (e) { console.error("Save Error"); }
         };
 
@@ -235,8 +238,8 @@
             const tbody = document.getElementById('repairTableBody');
             tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400 italic">載入資料中...</td></tr>';
             try {
-                // 【效能優化】加入 orderBy 配合 limit 限制每次最多抓取最新 200 筆，避免資料過多導致卡頓
-                const q = query(collection(db, "formEntries"), orderBy("createdAt", "desc"), limit(200));
+                // 【效能優化】移除會導致舊結案資料被濾掉的 limit(200)，改用完整的依時間排序抓取，並快取在記憶體中
+                const q = query(collection(db, "formEntries"), orderBy("createdAt", "desc"));
                 const snap = await getDocs(q);
                 allItems = [];
                 let total = 0, closed = 0;
@@ -253,7 +256,6 @@
                 renderTable();
             } catch (e) { 
                 console.error(e);
-                // 萬一部分舊資料沒有 createdAt 導致排序失敗的退守機制
                 try {
                     const fallbackSnap = await getDocs(collection(db, "formEntries"));
                     allItems = [];
@@ -286,6 +288,7 @@
             let displayData = data.slice(start, start + itemsPerPage);
             
             const maxPage = Math.ceil(data.length / itemsPerPage) || 1;
+            if (currentPage > maxPage) currentPage = maxPage;
             document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${maxPage} 頁`;
             prevBtn.disabled = currentPage === 1;
             nextBtn.disabled = currentPage >= maxPage;
@@ -316,7 +319,8 @@
                     <td class="p-4 text-center align-top flex flex-col gap-2">
                         ${isDone ? '<span class="text-emerald-500 text-xs font-bold py-2">✓ 已完工</span>' : `<button onclick="window.manageAction('${item.id}', 'close')" class="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs hover:bg-black transition shadow">結案</button>`}
                         <button onclick="window.manageAction('${item.id}', 'delete')" class="bg-red-50 text-red-500 px-3 py-2 rounded-lg text-xs hover:bg-red-500 hover:text-white transition">刪除</button>
-                    `;
+                    </td>
+                `;
                 tbody.appendChild(tr);
             });
         }
@@ -325,9 +329,29 @@
             const inputPwd = prompt(`請輸入管理員密碼：`);
             if (inputPwd !== ADMIN_PWD) { if(inputPwd !== null) alert("密碼錯誤"); return; }
             try {
-                if (type === 'close') await updateDoc(doc(db, "formEntries", id), { status: "已結案" });
-                else if (type === 'delete') if (confirm("確定要刪除這筆報修單嗎？")) await deleteDoc(doc(db, "formEntries", id));
-                fetchAndLoad();
+                if (type === 'close') {
+                    await updateDoc(doc(db, "formEntries", id), { status: "已結案" });
+                    // 【效能優化】直接在本地端更新狀態並重新渲染，省去重新跟遠端抓取資料的等待時間
+                    const target = allItems.find(i => i.id === id);
+                    if (target) target.status = "已結案";
+                } else if (type === 'delete') {
+                    if (confirm("確定要刪除這筆報修單嗎？")) {
+                        await deleteDoc(doc(db, "formEntries", id));
+                        allItems = allItems.filter(i => i.id !== id);
+                    } else {
+                        return;
+                    }
+                }
+                
+                // 重新計算上方總數與完成率
+                let total = allItems.length;
+                let closed = allItems.filter(i => i.status === "已結案").length;
+                document.getElementById('totalCount').innerText = total;
+                document.getElementById('closedCount').innerText = closed;
+                document.getElementById('completionRate').innerText = (total === 0 ? 0 : Math.round((closed/total)*100)) + "%";
+                
+                renderTable();
+                showStatus(type === 'close' ? "✅ 已成功結案" : "✅ 已成功刪除");
             } catch (e) { showStatus("操作失敗", true); }
         };
 
@@ -339,7 +363,7 @@
             try {
                 let base64Image = "";
                 if (fileInput.files && fileInput.files[0]) base64Image = await compressImage(fileInput.files[0]);
-                await addDoc(collection(db, "formEntries"), {
+                const docRef = await addDoc(collection(db, "formEntries"), {
                     name: document.getElementById('userName').value,
                     dept: document.getElementById('userDept').value,
                     category: document.getElementById('issueCategory').value,
